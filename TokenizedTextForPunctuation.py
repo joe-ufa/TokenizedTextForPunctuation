@@ -123,11 +123,22 @@ class TokenizedText:
     # Takes a sentence as input and returns a list of sentences after inserting inferred periods.
     def split_into_sentences_with_inferred_punctuation(self, text, treat_comma_as_period):
         return self.split_into_sentences(self.insert_stops(text), treat_comma_as_period)
-    
 
+    
     # Class TokenizedText
     # Populates the TokenizedText object for the document in the file filename.
     def populate_obj(self, text, treat_comma_as_period):
+        text = text.replace("\\n"," \n")         # Substitute newline characters for raw '\n', using spaces to maintain offset counts.
+        text = text.replace(r"\\.br\\", "      \n")   # Substitute newline characters for these strings, using spaces to maintain offset counts.
+        self.whole_doc = text
+        self.paragraphs = [(para + self.PARA_DELIMITER) for para in text.split(self.PARA_DELIMITER)]
+        self.paragraph_sentences = [self.split_into_sentences(para, treat_comma_as_period) for para in self.paragraphs]
+
+
+    # Class TokenizedText
+    # Populates the TokenizedText object for the document in the file filename.
+    # Bigram files are read in for inferring punctuation, currently just missing periods.
+    def populate_obj_with_inferred_punctuation(self, text, treat_comma_as_period):
         with open(self.SENTENCE_BEGIN_BIGRAMS_FILE, 'rb') as csvfile:
             bigram_reader = csv.reader(csvfile, delimiter = self.CSV_SEPARATOR)
             for row in bigram_reader:
@@ -143,15 +154,14 @@ class TokenizedText:
         self.paragraph_sentences = [self.split_into_sentences(para, treat_comma_as_period) for para in self.paragraphs]
         self.paragraph_sentences_with_inferred_punctuation = [self.split_into_sentences_with_inferred_punctuation(para, treat_comma_as_period) for para in self.paragraphs]
 
-
  
 # ------------------------- Class TokenizedText -------------------------------
 
 # Test loop.
-#s = " The quick  red  fox  jumped over the lazy brown dog, maybe.  Maybe not!"
+s = " The quick  red  fox  jumped over the lazy brown dog, maybe.  Maybe not!"
 s = "She is a man, ahem, with prostate cancer and other problems."
 tt = TokenizedText()
-tt.populate_obj(s, True)
+tt.populate_obj_with_inferred_punctuation(s, True)
 print tt.paragraphs
 print tt.paragraph_sentences
 print tt.paragraph_sentences_with_inferred_punctuation
