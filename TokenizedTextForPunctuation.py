@@ -10,12 +10,13 @@ import csv           # CSV file I/O.
 
 # ------------------------- Class TokenizedText -------------------------------
 # The TokenizedText class is used to tokenize raw text from a document
-# and to organize into paragraphs and sentences.
+# and to organize it into paragraphs and sentences.
 class TokenizedText:   
     # Constants used to tokenize text.
-    CSV_SEPARATOR = " "
+    BIGRAM_SEPARATOR = "\t"
     WHITE_SPACE = (' ', '\t', '\n')
-    PUNCTUATION_REGEX = "[\.\!\?\;\:\,]$"
+    PUNCTUATION_REGEX = "[\.\!\?\;\:\,\(\)\[\]\\\/]"
+    SPACE_EQUIVALENT_PUNCTUATION_REGEX = "[\!\?\;\:\,\(\)\[\]\\\/]"
     PARA_DELIMITER = "\n\n"
     NUM_REGEX = "\d+(\.\d*)?"
     CAPS = "([A-Z])"
@@ -25,8 +26,8 @@ class TokenizedText:
     ACRONYMS = "([A-Z][.][A-Z][.](?:[A-Z][.])?)"
     WEBSITES = "[.](com|net|org|io|gov)"
     DIGITS = "([0-9])"
-    SENTENCE_END_BIGRAMS_FILE = "sentence_end_bigrams.csv"
-    SENTENCE_BEGIN_BIGRAMS_FILE = "sentence_begin_bigrams.csv"
+    SENTENCE_END_BIGRAMS_FILE = "sentence_end_bigrams.txt"
+    SENTENCE_BEGIN_BIGRAMS_FILE = "sentence_begin_bigrams.txt"
     BEGIN_BIGRAMS = []
     END_BIGRAMS = []
     
@@ -52,7 +53,7 @@ class TokenizedText:
     # character count, which would mess up the sentence and paragraph offset counts.
     # See https://docs.python.org/2/library/string.html for documentation on string methods.
     # See https://docs.python.org/2/library/re.html for documentation on regular expressions.
-    def split_into_sentences(self, text, treat_comma_as_period):
+    def split_into_sentences(self, text):
         text = text.replace("\n"," ")
         text = text.replace("\r"," ")
         text = text.replace("%0D", "   ")
@@ -63,6 +64,8 @@ class TokenizedText:
         text = re.sub(self.WEBSITES,"<prd>\\1",text)
         if "Ph.D" in text:
             text = text.replace("Ph.D.","Ph<prd>D<prd>")
+        if "M.D." in text:
+            text = text.replace("M.D.","M<prd>D<prd>")
         text = re.sub("\s" + self.CAPS + "[.] "," \\1<prd> ",text)
         text = re.sub(self.ACRONYMS+" "+self.STARTERS,"\\1<stop> \\2",text)
         text = re.sub(self.CAPS + "[.]" + self.CAPS + "[.]" + self.CAPS + "[.]","\\1<prd>\\2<prd>\\3<prd>",text)
@@ -87,13 +90,11 @@ class TokenizedText:
         text = text.replace(".",".<stop>")
         text = text.replace("?","?<stop>")
         text = text.replace("!","!<stop>")
-        if treat_comma_as_period:
-            text = text.replace(",", ",<stop>")
         text = text.replace("<prd>",".")
         text = text + "<stop>"
         sentences = text.split("<stop>")
         sentences = sentences[:-1]
-        sentences = [s for s in sentences if s != '']
+        sentences = [re.sub(self.SPACE_EQUIVALENT_PUNCTUATION_REGEX, " ",s) for s in sentences if s != '']
         return sentences
     
     
@@ -121,47 +122,47 @@ class TokenizedText:
 
     # Class TokenizedText
     # Takes a sentence as input and returns a list of sentences after inserting inferred periods.
-    def split_into_sentences_with_inferred_punctuation(self, text, treat_comma_as_period):
-        return self.split_into_sentences(self.insert_stops(text), treat_comma_as_period)
+    def split_into_sentences_with_inferred_punctuation(self, text):
+        return self.split_into_sentences(self.insert_stops(text))
 
     
     # Class TokenizedText
     # Populates the TokenizedText object for the document in the file filename.
-    def populate_obj(self, text, treat_comma_as_period):
+    def populate_obj(self, text):
         text = text.replace("\\n"," \n")         # Substitute newline characters for raw '\n', using spaces to maintain offset counts.
         text = text.replace(r"\\.br\\", "      \n")   # Substitute newline characters for these strings, using spaces to maintain offset counts.
         self.whole_doc = text
         self.paragraphs = [(para + self.PARA_DELIMITER) for para in text.split(self.PARA_DELIMITER)]
-        self.paragraph_sentences = [self.split_into_sentences(para, treat_comma_as_period) for para in self.paragraphs]
+        self.paragraph_sentences = [self.split_into_sentences(para) for para in self.paragraphs]
 
 
     # Class TokenizedText
     # Populates the TokenizedText object for the document in the file filename.
     # Bigram files are read in for inferring punctuation, currently just missing periods.
-    def populate_obj_with_inferred_punctuation(self, text, treat_comma_as_period):
-        with open(self.SENTENCE_BEGIN_BIGRAMS_FILE, 'rb') as csvfile:
-            bigram_reader = csv.reader(csvfile, delimiter = self.CSV_SEPARATOR)
+    def populate_obj_with_inferred_punctuation(self, text):
+        with open(self.SENTENCE_BEGIN_BIGRAMS_FILE, 'rU') as csvfile:
+            bigram_reader = csv.reader(csvfile, delimiter = self.BIGRAM_SEPARATOR)
             for row in bigram_reader:
                 self.sentence_begin_bigrams.append((row[0], row[1]))
-        with open(self.SENTENCE_END_BIGRAMS_FILE, 'rb') as csvfile:
-            bigram_reader = csv.reader(csvfile, delimiter = self.CSV_SEPARATOR)
+        with open(self.SENTENCE_END_BIGRAMS_FILE, 'rU') as csvfile:
+            bigram_reader = csv.reader(csvfile, delimiter = self.BIGRAM_SEPARATOR)
             for row in bigram_reader:
                 self.sentence_end_bigrams.append((row[0], row[1]))
         text = text.replace("\\n"," \n")         # Substitute newline characters for raw '\n', using spaces to maintain offset counts.
         text = text.replace(r"\\.br\\", "      \n")   # Substitute newline characters for these strings, using spaces to maintain offset counts.
         self.whole_doc = text
         self.paragraphs = [(para + self.PARA_DELIMITER) for para in text.split(self.PARA_DELIMITER)]
-        self.paragraph_sentences = [self.split_into_sentences(para, treat_comma_as_period) for para in self.paragraphs]
-        self.paragraph_sentences_with_inferred_punctuation = [self.split_into_sentences_with_inferred_punctuation(para, treat_comma_as_period) for para in self.paragraphs]
+        self.paragraphs[-1] = re.sub("\n\n", "", self.paragraphs[-1])   # Remove final paragraph delimiter at end of document.
+        self.paragraph_sentences = [self.split_into_sentences(para) for para in self.paragraphs]
+        self.paragraph_sentences_with_inferred_punctuation = [self.split_into_sentences_with_inferred_punctuation(para) for para in self.paragraphs]
 
  
 # ------------------------- Class TokenizedText -------------------------------
-
 # Test loop.
-s = " The quick  red  fox  jumped over the lazy brown dog, maybe.  Maybe not!"
-s = "She is a man, ahem, with prostate cancer and other problems."
+#s = "She is a 2 y man, ahem, with prostate cancer and other problems."
+s = "xxx Imaging Results yyy Page 42 sss HER2,PR3(2,5) zzz x:2.4% y: 3 what do you think? aaa date/time bbb"
 tt = TokenizedText()
-tt.populate_obj_with_inferred_punctuation(s, True)
+tt.populate_obj_with_inferred_punctuation(s)
 print tt.paragraphs
 print tt.paragraph_sentences
 print tt.paragraph_sentences_with_inferred_punctuation
